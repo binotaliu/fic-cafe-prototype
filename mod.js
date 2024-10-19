@@ -149,9 +149,10 @@ function handleChooseSeat(data, clientId) {
   // Free the previous seat if the user already has one
   const currentSeatId = Object.keys(seats).find(id => seats[id].user.id === funcUserIdByClientId(clientId));
   if (currentSeatId) {
-    seats[currentSeatId] = { id: currentSeatId, ...JSON.parse(JSON.stringify(emptySeat)) };
     db.query("UPDATE seats SET occupied = 0, time = NULL, user_id = NULL WHERE id = ?", [currentSeatId]);
     console.debug(`Seat freed: ${currentSeatId} by user: ${data.username}`);
+
+    seats = loadSeatsFromDB()
   }
 
   seat.occupied = true;
@@ -188,9 +189,9 @@ function handleLeaveSeat(data, clientId) {
 
   const seatId = Object.keys(seats).find(id => seats[id].user.id === userId);
   if (seatId) {
-    seats[seatId] = { id: seatId, ...JSON.parse(JSON.stringify(emptySeat)) };
     db.query("UPDATE seats SET occupied = 0, time = NULL, user_id = NULL WHERE id = ?", [seatId]);
     console.debug(`Seat left: ${seatId} by user: ${userId}`);
+    seats = loadSeatsFromDB();
     broadcast({ type: 'seats.updated', seats });
   }
 }
