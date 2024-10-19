@@ -106,6 +106,10 @@
 <script>
   function cafeApp() {
     function formatElapsedTime(startTime) {
+      if (! startTime) {
+        return '-';
+      }
+
       const elapsed = Date.now() - startTime;
       const minutes = Math.floor(elapsed / 60000);
       const seconds = Math.floor((elapsed % 60000) / 1000);
@@ -208,6 +212,10 @@
         let username = prompt('請輸入您的 ID:')
         if (/^[a-zA-Z0-9]{3,30}$/.test(username) === false) {
           alert('ID 只能包含英文和數字，長度 3-30 字元！')
+          return;
+        }
+
+        if (! username) {
           return;
         }
 
