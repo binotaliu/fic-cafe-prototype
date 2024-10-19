@@ -1,6 +1,8 @@
 // Import necessary modules
 import { WebSocketServer } from "https://deno.land/x/websocket@v0.1.4/mod.ts";
 import { DB } from "https://deno.land/x/sqlite/mod.ts";
+import "jsr:@std/dotenv/load";
+
 import * as UserService from './services/userService.js';
 import * as OrderService from './services/orderService.js';
 
