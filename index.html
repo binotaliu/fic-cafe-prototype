@@ -118,16 +118,32 @@
       pendingOrders: [],
       deliveredOrders: [],
       currentSeat: null,
+      username: null,
       userBalance: 0,
       ws: null,
       showMenu: false,
       currentTime: new Date().toLocaleTimeString(),
       showNotificationModal: false,
       init () {
-        console.log("Initializing cafeApp...");
         this.requestNotificationPermission();
 
+        // try to recover currentSeat from localStorage
+        this.currentSeat = localStorage.getItem("currentSeat") || null;
+        this.username = localStorage.getItem("username") || null;
+
+        // 使用 Token 確保重新連線後用戶狀態能恢復
+        this.clientId = localStorage.getItem("clientId");
+        if (!this.clientId) {
+          this.clientId = crypto.randomUUID();
+          localStorage.setItem("clientId", this.clientId);
+        }
+
         this.ws = new WebSocket("ws://localhost:8080");
+        this.ws.onopen = () => {
+          // 當連線建立時，向後端發送 clientId
+          this.sendMessage("client.connect", { clientId: this.clientId });
+        };
+
         this.ws.onmessage = (event) => {
           const data = JSON.parse(event.data);
           console.log(`[${data.type}] `, data);
@@ -144,6 +160,14 @@
             action.call(this, data);
           }
         };
+
+        // 斷線時等待 5 秒後重連
+        this.ws.onclose = () => {
+          setTimeout(() => {
+            this.ws = new WebSocket("ws://localhost:8080");
+          }, 5000);
+        };
+
         setInterval(() => {
           this.currentTime = new Date().toLocaleTimeString();
           this.updateElapsedTime();
@@ -187,15 +211,18 @@
           return;
         }
 
-        if (username) {
-          console.log('User ID entered:', username)
-          this.sendMessage('seats.choose', { seatId, username });
-          this.currentSeat = seatId;
+        console.log('User ID entered:', username)
+        this.username = username;
+        this.currentSeat = seatId;
+        this.sendMessage('seats.choose', { seatId, username });
 
-          // 即時在本地更新座位信息，避免延遲
-          seat.occupied = true;
-          seat.user = { id: "pending", name: username };
-        }
+        // 即時在本地更新座位信息，避免延遲
+        seat.occupied = true;
+        seat.user = { id: "pending", name: username };
+
+        // store in localStorage
+        localStorage.setItem("currentSeat", seatId);
+        localStorage.setItem("username", username);
       },
       openMenu () {
         console.log("Opening menu...");
@@ -251,6 +278,19 @@
       console.log("Updating seats:", data.seats);
       this.seats = { ...data.seats };
       console.log("Updated seats in state:", this.seats);
+
+      // check if currentSeat is still valid. check the occupied status and username
+      if (this.currentSeat) {
+        const currentSeat = this.seats[this.currentSeat];
+        console.log('username', this.username)
+        console.log('currentSeat', currentSeat)
+        if (!currentSeat || !currentSeat.occupied || currentSeat.user.name !== this.username) {
+          console.log("Current seat is invalid, clearing...");
+          this.currentSeat = null;
+          localStorage.removeItem("currentSeat");
+          localStorage.removeItem("username");
+        }
+      }
     },
     ordersUpdated(data) {
       const newPendingOrders = data.orders.filter(o => o.status === 'pending');

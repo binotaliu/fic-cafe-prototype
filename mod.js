@@ -88,26 +88,45 @@ let menuItems = {
 const clients = new Map();
 
 wss.on("connection", (ws) => {
-  const clientId = crypto.randomUUID();
-  clients.set(clientId, ws);
-  console.debug(`Client connected: ${clientId}`);
-
-  ws.send(JSON.stringify({ type: "seats.updated", seats }));
-  ws.send(JSON.stringify({ type: "menu.updated", menuItems }));
+  let clientId = null;
 
   ws.on("message", (message) => {
     try {
       const data = JSON.parse(message);
-      handleWebSocketMessage(data, clientId);
+
+      if (data.type === "client.connect") {
+        clientId = data.clientId;
+        if (clients.has(clientId)) {
+          clients.delete(clientId); // 清除之前的連線
+        }
+        clients.set(clientId, ws);
+        console.debug(`Client reconnected: ${clientId}`);
+
+        // 發送更新信息給重新連線的用戶
+        ws.send(JSON.stringify({ type: "seats.updated", seats }));
+        ws.send(JSON.stringify({ type: "menu.updated", menuItems }));
+
+        // 如果用戶已經有選擇座位，恢復座位狀態和餘額信息
+        const userId = findUserIdByClientId(clientId);
+        if (userId) {
+          notifyUserOrders(clientId);
+          const user = UserService.getUserById(db, userId);
+          pm(clientId, { type: "balance.updated", balance: user.balance });
+        }
+      } else {
+        handleWebSocketMessage(data, clientId);
+      }
+
     } catch (e) {
-      console.error(`Invalid message received from ${clientId}: ${message}`);
+      console.error(`Invalid message received: ${message}`);
     }
   });
 
   ws.on("close", () => {
-    clients.delete(clientId);
-    handleClientDisconnection(clientId);
-    console.debug(`Client disconnected: ${clientId}`);
+    if (clientId) {
+      handleClientDisconnection(clientId);
+    }
+    console.debug(`Client disconnected`);
   });
 });
 
@@ -147,13 +166,14 @@ function handleChooseSeat(data, clientId) {
   }
 
   // Free the previous seat if the user already has one
-  const currentSeatId = Object.keys(seats).find(id => seats[id].user.id === funcUserIdByClientId(clientId));
-  if (currentSeatId) {
-    db.query("UPDATE seats SET occupied = 0, time = NULL, user_id = NULL WHERE id = ?", [currentSeatId]);
-    console.debug(`Seat freed: ${currentSeatId} by user: ${data.username}`);
+  Object.keys(seats)
+    .filter(id => seats[id].user.id === findUserIdByClientId(clientId))
+    .forEach(id => {
+      db.query("UPDATE seats SET occupied = 0, time = NULL, user_id = NULL WHERE id = ?", [id]);
+      console.debug(`Seat freed: ${id} by user: ${data.username}`);
+    });
 
-    seats = loadSeatsFromDB()
-  }
+  seats = loadSeatsFromDB()
 
   seat.occupied = true;
   seat.time = Date.now();
@@ -181,7 +201,7 @@ function handleChooseSeat(data, clientId) {
 }
 
 function handleLeaveSeat(data, clientId) {
-  const userId = funcUserIdByClientId(clientId);
+  const userId = findUserIdByClientId(clientId);
   if (!userId) {
     console.debug(`No user found for client: ${clientId}`);
     return;
@@ -210,7 +230,7 @@ function notifyUserOrders(clientId) {
   pm(clientId, { type: "orders.updated", orders });
 }
 
-function funcUserIdByClientId(clientId) {
+function findUserIdByClientId(clientId) {
   const user = UserService.getUserByClientId(db, clientId);
   return user ? user.id : null;
 }
@@ -224,7 +244,7 @@ function handleOrderItem(data, clientId) {
     return;
   }
 
-  const userId = funcUserIdByClientId(clientId);
+  const userId = findUserIdByClientId(clientId);
   console.debug(`Order received: ${menuItem.name} by user: ${userId}`);
 
   // check if user has enough balance
