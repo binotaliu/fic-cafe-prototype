@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>空想咖啡廳</title>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css" integrity="sha512-Kc323vGBEqzTmouAECnVceyQqyqdsSiqLQISBL29aUW4U/M7pSPA/gEUZQqv1cwx4OnYxTxve5UMg5GT6L4JJg==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+</head>
+<body class="bg-gray-100 min-h-screen flex items-center justify-center">
+<div x-data="cafeApp()" x-init="init()" class="max-w-7xl mx-auto grid grid-cols-2 gap-6">
+  <!-- Left Column -->
+  <div class="flex flex-col gap-6">
+    <!-- Cafe Sign Card -->
+    <div class="bg-yellow-100 p-6 rounded-lg shadow-md">
+      <h1 class="text-center text-2xl font-bold mb-4"><i class="fas fa-coffee mr-2"></i>空想咖啡廳</h1>
+      <div class="text-center mb-4">
+        <p>營業時間：早上 7:00 - 下午 19:00</p>
+        <p>目前時間：<span class="text-mono" x-text="currentTime"></span></p>
+      </div>
+    </div>
+    <!-- Seat Map Card -->
+    <div class="bg-white p-6 rounded-lg shadow-md">
+      <h2 class="text-xl font-bold mb-4"><i class="fas fa-chair mr-2"></i>座位圖</h2>
+      <div class="grid grid-cols-4 gap-4 mb-4">
+        <template x-for="seat in seats" :key="seat.id">
+          <div
+            @click="chooseSeat(seat.id)"
+            :class="{ 'bg-green-300': seat.occupied, 'bg-gray-200': !seat.occupied }"
+            class="flex-col items-center justify-center p-4 rounded cursor-pointer text-center"
+          >
+            <div x-text="seat.occupied ? seat.user.name : '空位'"></div>
+            <div
+              class="font-mono"
+              x-show="seat.occupied"
+              x-text="seat.elapsedTime || '-'"
+            ></div>
+          </div>
+        </template>
+      </div>
+    </div>
+  </div>
+  <!-- Right Column -->
+  <div class="flex flex-col gap-6">
+    <!-- My Seat and Menu Button Card -->
+    <div class="bg-blue-100 p-6 rounded-lg shadow-md">
+      <h2 class="text-xl font-bold mb-4"><i class="fas fa-user mr-2"></i>我的座位</h2>
+      <div x-show="currentSeat">
+        <p>座位: <span x-text="currentSeat"></span></p>
+        <p>您的錢包：<span x-text="userBalance"></span> 元</p>
+        <button @click="openMenu" class="bg-blue-500 text-white py-2 px-4 rounded mt-4"><i class="fas fa-utensils mr-2"></i>菜單</button>
+      </div>
+    </div>
+    <!-- Delivered Orders Card -->
+    <div class="bg-green-100 p-6 rounded-lg shadow-md">
+      <h3 class="text-lg font-bold mb-4"><i class="fas fa-mug-hot mr-2"></i>桌上的餐點</h3>
+      <ul>
+        <template x-for="order in deliveredOrders" :key="order.id">
+          <li class="mb-2 flex items-center">
+            <span x-text="menuItems[order.itemKey].name + ' - 剩餘容量: ' + order.capacity" class="flex-grow"></span>
+            <button @click="drinkItem(order.id)" class="bg-green-500 text-white py-1 px-2 ml-2 rounded"><i class="fas fa-wine-glass-alt"></i> 喝一口</button>
+          </li>
+        </template>
+      </ul>
+      <div x-show="deliveredOrders.length === 0" class="text-gray-500">目前桌上沒有餐點</div>
+    </div>
+    <!-- Pending Orders Card -->
+    <div class="bg-red-100 p-6 rounded-lg shadow-md">
+      <h3 class="text-lg font-bold mb-4"><i class="fas fa-clock mr-2"></i>待送餐的內容</h3>
+      <ul>
+        <template x-for="order in pendingOrders" :key="order.id">
+          <li x-text="menuItems[order.itemKey].name" class="mb-2"></li>
+        </template>
+      </ul>
+      <div x-show="pendingOrders.length === 0" class="text-gray-500">目前沒有待送餐的內容</div>
+    </div>
+  </div>
+
+  <!-- Menu Modal -->
+  <div x-show="showMenu" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+    <div class="bg-white p-6 rounded-lg w-1/3">
+      <h2 class="text-xl font-bold mb-4"><i class="fas fa-utensils mr-2"></i>菜單</h2>
+      <ul>
+        <template x-for="(item, itemKey) in menuItems" :key="itemKey">
+          <li @click="orderItem(itemKey)" class="cursor-pointer mb-2 flex items-center">
+            <span x-text="item.name + ' - ' + item.price + '元'" class="flex-grow"></span>
+            <i class="fas fa-plus-circle text-blue-500 ml-2"></i>
+          </li>
+        </template>
+      </ul>
+      <button @click="closeMenu" class="mt-4 bg-red-500 text-white py-2 px-4 rounded"><i class="fas fa-times-circle mr-2"></i>關閉</button>
+    </div>
+  </div>
+
+  <!-- Notification Permission Modal -->
+  <div x-show="showNotificationModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+    <div class="bg-white p-6 rounded-lg w-1/3">
+      <h2 class="text-xl font-bold mb-4"><i class="fas fa-bell mr-2"></i>通知權限</h2>
+      <p class="mb-4">我們需要您的通知權限來提供更好的服務體驗。</p>
+      <button @click="grantNotificationPermission" class="bg-blue-500 text-white py-2 px-4 rounded"><i class="fas fa-check-circle mr-2"></i>允許</button>
+      <button @click="closeNotificationModal" class="mt-4 bg-red-500 text-white py-2 px-4 rounded"><i class="fas fa-times-circle mr-2"></i>拒絕</button>
+    </div>
+  </div>
+</div>
+<script>
+  function cafeApp() {
+    function formatElapsedTime(startTime) {
+      const elapsed = Date.now() - startTime;
+      const minutes = Math.floor(elapsed / 60000);
+      const seconds = Math.floor((elapsed % 60000) / 1000);
+      return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+    }
+
+    return {
+      seats: {},
+      menuItems: {},
+      pendingOrders: [],
+      deliveredOrders: [],
+      currentSeat: null,
+      userBalance: 0,
+      ws: null,
+      showMenu: false,
+      currentTime: new Date().toLocaleTimeString(),
+      showNotificationModal: false,
+      init () {
+        console.log("Initializing cafeApp...");
+        this.requestNotificationPermission();
+
+        this.ws = new WebSocket("ws://localhost:8080");
+        this.ws.onmessage = (event) => {
+          const data = JSON.parse(event.data);
+          console.log(`[${data.type}] `, data);
+          const routes = {
+            "seats.updated": wsActions.updateSeats,
+            "menu.updated": wsActions.updateMenu,
+            "balance.updated": wsActions.updateBalance,
+            "items.capacity-updated": wsActions.updateItemCapacity,
+            "items.finished": wsActions.itemFinished,
+            "orders.updated": wsActions.ordersUpdated,
+          };
+          const action = routes[data.type];
+          if (action) {
+            action.call(this, data);
+          }
+        };
+        setInterval(() => {
+          this.currentTime = new Date().toLocaleTimeString();
+          this.updateElapsedTime();
+        }, 1000);
+      },
+      async requestNotificationPermission () {
+        if (Notification.permission !== "granted") {
+          await Notification.requestPermission();
+
+          if (Notification.permission === "granted") {
+            new Notification("歡迎來到空想咖啡廳！", {
+              body: "我們將為您提供最好的服務體驗！",
+            });
+          } else {
+            this.showNotificationModal = true;
+          }
+        }
+      },
+      grantNotificationPermission () {
+        this.requestNotificationPermission();
+        this.showNotificationModal = false;
+      },
+      closeNotificationModal () {
+        this.showNotificationModal = false;
+      },
+      sendMessage (type, data) {
+        this.ws.send(JSON.stringify({ type, ...data }));
+      },
+      chooseSeat (seatId) {
+        console.log("Choosing seat:", seatId);
+        let seat = this.seats[seatId];
+
+        if (seat.occupied) {
+          alert('這個座位已經有人入座了！')
+          return;
+        }
+
+        let username = prompt('請輸入您的 ID:')
+        if (/^[a-zA-Z0-9]{3,30}$/.test(username) === false) {
+          alert('ID 只能包含英文和數字，長度 3-30 字元！')
+          return;
+        }
+
+        if (username) {
+          console.log('User ID entered:', username)
+          this.sendMessage('seats.choose', { seatId, username });
+          this.currentSeat = seatId;
+
+          // 即時在本地更新座位信息，避免延遲
+          seat.occupied = true;
+          seat.user = { id: "pending", name: username };
+        }
+      },
+      openMenu () {
+        console.log("Opening menu...");
+        this.showMenu = true;
+      },
+      closeMenu () {
+        console.log("Closing menu...");
+        this.showMenu = false;
+      },
+      orderItem (itemKey) {
+        const item = this.menuItems[itemKey];
+        console.log("Ordering item:", itemKey, "Price:", item.price);
+
+        // check if we have enough balance
+        if (this.userBalance < item.price) {
+          alert('您的錢包餘額不足！');
+          return;
+        }
+
+        let userId = this.seats[this.currentSeat]?.user?.id;
+        this.sendMessage('menu.order', { userId, itemKey });
+        alert(`${item.name} 已點！價格: ${item.price} 元`);
+        this.closeMenu();
+      },
+      drinkItem (orderId) {
+        const order = this.deliveredOrders.find(o => o.id === orderId);
+
+        if (!order) {
+          alert('找不到這個訂單！');
+          return;
+        }
+
+        console.log("Drinking item:", order.itemKey);
+        let userId = this.seats[this.currentSeat].user.id;
+        this.sendMessage('items.drink', { userId, orderId });
+
+        if (order.capacity === 1) {
+          alert('已經喝完啦！');
+        }
+      },
+      updateElapsedTime () {
+        for (const seat of Object.values(this.seats)) {
+          if (seat.occupied) {
+            seat.elapsedTime = formatElapsedTime(seat.time);
+          }
+        }
+      }
+    };
+  }
+
+  const wsActions = {
+    updateSeats(data) {
+      console.log("Updating seats:", data.seats);
+      this.seats = { ...data.seats };
+      console.log("Updated seats in state:", this.seats);
+    },
+    ordersUpdated(data) {
+      const newPendingOrders = data.orders.filter(o => o.status === 'pending');
+      const newDeliveredOrders = data.orders.filter(o => o.status === 'delivered');
+
+      // check if our pendingOrders appear in the new deliveredOrders, which means they are delivered
+      const deliveredItems = newDeliveredOrders.filter(
+        o => this.pendingOrders.find(po => po.id === o.id)
+      );
+
+      const deliveredItemNames = deliveredItems.map(o => this.menuItems[o.itemKey].name);
+
+      this.pendingOrders = newPendingOrders;
+      this.deliveredOrders = newDeliveredOrders;
+
+      if (deliveredItems.length > 0) {
+        new Notification("訂單已送達！", {
+          body: `您的 ${deliveredItemNames.join('、')} 已經到桌了，請享用！`,
+        });
+      }
+    },
+    updateMenu(data) {
+      console.log("Updating menu items:", data.menuItems);
+      this.menuItems = data.menuItems;
+    },
+    updateBalance(data) {
+      console.log("Updating balance for user:", data.userId, "Balance:", data.balance);
+      this.userBalance = data.balance;
+    },
+  };
+
+  window.addEventListener("load", () => {
+    Alpine.data('cafeApp', cafeApp);
+  });
+</script>
+</body>
+</html>
