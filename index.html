@@ -138,7 +138,7 @@
           localStorage.setItem("clientId", this.clientId);
         }
 
-        this.ws = new WebSocket("ws://localhost:8080");
+        this.ws = new WebSocket("<WSS_URL_PLACEHOLDER>");
         this.ws.onopen = () => {
           // 當連線建立時，向後端發送 clientId
           this.sendMessage("client.connect", { clientId: this.clientId });
@@ -164,7 +164,7 @@
         // 斷線時等待 5 秒後重連
         this.ws.onclose = () => {
           setTimeout(() => {
-            this.ws = new WebSocket("ws://localhost:8080");
+            this.ws = new WebSocket("<WSS_URL_PLACEHOLDER>");
           }, 5000);
         };
 

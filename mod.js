@@ -346,7 +346,9 @@ setInterval(() => {
 }, 1000);
 
 // Read HTML content from an external file
-const htmlContent = await Deno.readTextFile("./index.html");
+const WSS_URL = Deno.env.WSS_URL || "ws://localhost:8080";
+const htmlContent = (await Deno.readTextFile("./index.html"))
+  .replace(/<WSS_URL_PLACEHOLDER>/g, WSS_URL);
 
 // Request handler
 const handler = (request) => {
