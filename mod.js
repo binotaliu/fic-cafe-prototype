@@ -29,16 +29,54 @@ db.query(`
     capacity INTEGER
   )
 `);
+db.query(`
+  CREATE TABLE IF NOT EXISTS seats (
+    id TEXT PRIMARY KEY,
+    occupied INTEGER,
+    time INTEGER,
+    user_id INTEGER
+  )
+`);
 
-const emptySeat = { occupied: false, time: null, user: { id: null, name: null } };
-let seats = Object.fromEntries(
-  [
-    'A1', 'A2', 'A3', 'A4',
-    'B1', 'B2', 'B3', 'B4',
-    'C1', 'C2', 'C3', 'C4',
-    'D1', 'D2', 'D3', 'D4',
-  ].map(seatId => [seatId, { id: seatId, ...JSON.parse(JSON.stringify(emptySeat)) }])
-)
+// Load seats from the database
+function loadSeatsFromDB() {
+  const rows = db.query("SELECT id, occupied, time, user_id FROM seats");
+  const loadedSeats = Object.fromEntries(
+    rows.map(([id, occupied, time, user_id]) => [
+      id,
+      {
+        id,
+        occupied: !!occupied,
+        time,
+        user: user_id ? { id: user_id, name: UserService.getUserById(db, user_id).username } : { id: null, name: null }
+      },
+    ])
+  );
+  return loadedSeats;
+}
+
+let seats = loadSeatsFromDB();
+
+// If no seats are loaded (e.g., first run), initialize them
+db.query(`
+  INSERT OR IGNORE INTO seats (id, occupied, time, user_id) VALUES 
+  ('A1', 0, NULL, NULL),
+  ('A2', 0, NULL, NULL),
+  ('A3', 0, NULL, NULL),
+  ('A4', 0, NULL, NULL),
+  ('B1', 0, NULL, NULL),
+  ('B2', 0, NULL, NULL),
+  ('B3', 0, NULL, NULL),
+  ('B4', 0, NULL, NULL),
+  ('C1', 0, NULL, NULL),
+  ('C2', 0, NULL, NULL),
+  ('C3', 0, NULL, NULL),
+  ('C4', 0, NULL, NULL),
+  ('D1', 0, NULL, NULL),
+  ('D2', 0, NULL, NULL),
+  ('D3', 0, NULL, NULL),
+  ('D4', 0, NULL, NULL)
+`);
 
 let menuItems = {
   WATER: { id: 'WATER', name: '水', price: 0, preparationTime: 1000, capacity: 5 },
@@ -112,6 +150,7 @@ function handleChooseSeat(data, clientId) {
   const currentSeatId = Object.keys(seats).find(id => seats[id].user.id === funcUserIdByClientId(clientId));
   if (currentSeatId) {
     seats[currentSeatId] = { id: currentSeatId, ...JSON.parse(JSON.stringify(emptySeat)) };
+    db.query("UPDATE seats SET occupied = 0, time = NULL, user_id = NULL WHERE id = ?", [currentSeatId]);
     console.debug(`Seat freed: ${currentSeatId} by user: ${data.username}`);
   }
 
@@ -130,6 +169,7 @@ function handleChooseSeat(data, clientId) {
   console.debug(`Seat chosen: ${data.seatId} by user: ${data.username}`);
 
   seats[data.seatId] = seat;
+  db.query("UPDATE seats SET occupied = 1, time = ?, user_id = ? WHERE id = ?", [seat.time, user.id, data.seatId]);
   broadcast({ type: 'seats.updated', seats });
 
   // also broadcast the orders to the user
@@ -149,6 +189,7 @@ function handleLeaveSeat(data, clientId) {
   const seatId = Object.keys(seats).find(id => seats[id].user.id === userId);
   if (seatId) {
     seats[seatId] = { id: seatId, ...JSON.parse(JSON.stringify(emptySeat)) };
+    db.query("UPDATE seats SET occupied = 0, time = NULL, user_id = NULL WHERE id = ?", [seatId]);
     console.debug(`Seat left: ${seatId} by user: ${userId}`);
     broadcast({ type: 'seats.updated', seats });
   }
@@ -247,7 +288,7 @@ function handleClientDisconnection(clientId) {
 // Function to add balance to users every 20 minutes based on individual timers
 setInterval(() => {
   const currentHour = new Date().getHours();
-  if (currentHour >= 7 && currentHour < 21) { // Only operate between 7:00 and 19:00
+  if (currentHour >= 7 && currentHour < 19) { // Only operate between 7:00 and 19:00
     Object.values(seats).forEach(seat => {
       if (seat.occupied) {
         const userId = seat.user.id;
@@ -264,7 +305,7 @@ setInterval(() => {
       }
     });
   }
-}, 5 * 1000); // Check every 5 seconds
+}, 60 * 1000); // Check every minute
 
 // handle pending items. convert them to delivered and notify the user
 setInterval(() => {
@@ -296,4 +337,3 @@ const handler = (request) => {
 // Start server
 console.log(`Server running on http://localhost:${PORT}`);
 Deno.serve(handler, { port: PORT });
-
